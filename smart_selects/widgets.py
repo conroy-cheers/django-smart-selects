@@ -61,6 +61,67 @@ class ChainedSelect(Select):
 
         return forms.Media(js=js)
 
+    def js(self):
+        chained_field = self.chained_field
+
+        if not self.view_name:
+            if self.show_all:
+                view_name = "chained_filter_all"
+            else:
+                view_name = "chained_filter"
+        else:
+            view_name = self.view_name
+        kwargs = {
+            'app': self.to_app_name,
+            'model': self.to_model_name,
+            'field': self.chained_model_field,
+            'foreign_key_app_name': self.foreign_key_app_name,
+            'foreign_key_model_name': self.foreign_key_model_name,
+            'foreign_key_field_name': self.foreign_key_field_name,
+            'value': '1'
+        }
+        if self.manager is not None:
+            kwargs.update({'manager': self.manager})
+        url = URL_PREFIX + ("/".join(reverse(view_name, kwargs=kwargs).split("/")[:-2]))
+        id = "id_" + url.split("/")[-1]
+        if self.auto_choose:
+            auto_choose = 'true'
+        else:
+            auto_choose = 'false'
+        iterator = iter(self.choices)
+        if hasattr(iterator, '__next__'):
+            empty_label = iterator.__next__()[1]
+        else:
+            # Hacky way to getting the correct empty_label from the field instead of a hardcoded '--------'
+            empty_label = iterator.next()[1]
+
+        js = """
+        <script type="text/javascript">
+        (function($) {
+            var chainfield = "#id_%(chainfield)s";
+            var url = "%(url)s";
+            var id = "#%(id)s";
+            var value = %(value)s;
+            var auto_choose = %(auto_choose)s;
+            var empty_label = "%(empty_label)s";
+
+            $(document).ready(function() {
+                chainedfk.init(chainfield, url, id, value, empty_label, auto_choose);
+            });
+        })(jQuery || django.jQuery);
+        </script>
+
+        """
+        js = js % {"chainfield": chained_field,
+                   "url": url,
+                   "id": id,
+                   'value': 'undefined',
+                   'auto_choose': auto_choose,
+                   'empty_label': escape(empty_label)}
+        output = js
+
+        return mark_safe(output)
+
     def render(self, name, value, attrs=None, choices=()):
         if len(name.split('-')) > 1:  # formset
             chained_field = '-'.join(name.split('-')[:-1] + [self.chained_field])
